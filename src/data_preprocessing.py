@@ -10,7 +10,7 @@ class DataPreprocessingTrain:
     def transform(self, id_df: pd.DataFrame, trans_df: pd.DataFrame):
         """Transforms the DataFrame."""
         # Merge the DataFrames
-        merged_df = pd.merge(id_df, trans_df, on='TransactionID', how='inner')
+        merged_df = pd.merge(id_df, trans_df, on='TransactionID', how='right')
         # Remove features with > 90% missing values, id & date columns
         features_to_rem_id = ['id_07', 'id_08'] + [f'id_{i}' for i in range(21,28)] 
         features_to_rem_trans = ['dist1', 'D11'] + [f'M{i}' for i in range(1,10)] + [f'V{i}' for i in range(1,12)] + ['TransactionID', 'TransactionDT']
@@ -56,7 +56,7 @@ class DataPreprocessingInference:
         # rename columns
         id_df.columns = self._rename_columns(id_df.columns)
         # Merge the DataFrames
-        merged_df = pd.merge(id_df, trans_df, on='TransactionID', how='inner')
+        merged_df = pd.merge(id_df, trans_df, on='TransactionID', how='right')
         # Remove features with > 90% missing values
         features_to_rem_id = ['id_07', 'id_08'] + [f'id_{i}' for i in range(21,28)]
         features_to_rem_trans = ['dist1', 'D11'] + [f'M{i}' for i in range(1,10)] + [f'V{i}' for i in range(1,12)] + ['TransactionID', 'TransactionDT']
