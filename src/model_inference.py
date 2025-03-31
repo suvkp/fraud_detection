@@ -7,6 +7,12 @@ class ModelInference:
 
     def predict_proba(self, X):
         """Make predictions using a trained model."""
+        # Check if the model is fitted
+        if not hasattr(self.model_object, 'predict_proba'):
+            raise ValueError("The model object does not have a predict_proba method.")
+        # Check if the input data is valid
+        if not isinstance(X, pd.DataFrame):
+            raise ValueError("Input data must be a pandas DataFrame.")
         prediction = self.model_object.predict_proba(X)
         return prediction
     
