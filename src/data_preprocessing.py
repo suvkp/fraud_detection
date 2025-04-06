@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 from sklearn.model_selection import train_test_split
+from .feature_selection import FeatureSelection, RemoveHighMissingValues
 
 class DataPreprocessingTrain:
     def __init__(self, create_val_set=False):
@@ -11,11 +12,16 @@ class DataPreprocessingTrain:
         """Transforms the DataFrame."""
         # Merge the DataFrames
         merged_df = pd.merge(id_df, trans_df, on='TransactionID', how='right')
+        print(f"Before feature selection (missing threshold): {merged_df.shape}")
+
         # Remove features with > 90% missing values, id & date columns
-        features_to_rem_id = ['id_07', 'id_08'] + [f'id_{i}' for i in range(21,28)] 
-        features_to_rem_trans = ['dist1', 'D11'] + [f'M{i}' for i in range(1,10)] + [f'V{i}' for i in range(1,12)] + ['TransactionID', 'TransactionDT']
-        col_to_rem = features_to_rem_id + features_to_rem_trans
-        merged_df.drop(col_to_rem, axis=1, inplace=True)
+        merged_df = FeatureSelection(RemoveHighMissingValues(threshold=0.9)).select_features(merged_df)
+        print(f"After feature selection (missing threshold): {merged_df.shape}")
+        # features_to_rem_id = ['id_07', 'id_08'] + [f'id_{i}' for i in range(21,28)] 
+        # features_to_rem_trans = ['dist1', 'D11'] + [f'M{i}' for i in range(1,10)] + [f'V{i}' for i in range(1,12)] + ['TransactionID', 'TransactionDT']
+        # col_to_rem = features_to_rem_id + features_to_rem_trans
+        # merged_df.drop(col_to_rem, axis=1, inplace=True)
+
         # Impute missing values
         preprocessed_df = self._impute_missing_values(merged_df)
         # Split the DataFrame into features and target

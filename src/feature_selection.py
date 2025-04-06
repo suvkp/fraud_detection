@@ -1,102 +1,106 @@
 import numpy as np
 import pandas as pd
 from sklearn.decomposition import PCA
-from sklearn.feature_selection import VarianceThreshold, SelectKBest, f_regression
+from sklearn.feature_selection import VarianceThreshold, SelectKBest, f_regression, SequentialFeatureSelector
 from sklearn.linear_model import LinearRegression
 from itertools import combinations
+from abc import abstractmethod, ABC
 
-class FeatureSelectionExperiment:
-    def __init__(self, method, missing_threshold=0.3, variance_threshold=0.01, 
-                 correlation_threshold=0.9, target_correlation_threshold=0.1, n_pca_components=None):
-        """
-        Initialize the feature selection experiment.
-        
-        :param method: Feature selection method to apply.
-        :param missing_threshold: Threshold for removing features with missing values.
-        :param variance_threshold: Minimum variance required for a feature to be kept.
-        :param correlation_threshold: Threshold for removing one of two highly correlated features.
-        :param target_correlation_threshold: Minimum correlation with target to keep a feature.
-        :param n_pca_components: Number of PCA components to keep (if using PCA).
-        """
-        self.method = method
-        self.missing_threshold = missing_threshold
-        self.variance_threshold = variance_threshold
-        self.correlation_threshold = correlation_threshold
-        self.target_correlation_threshold = target_correlation_threshold
-        self.n_pca_components = n_pca_components
+class FeatureSelectionBaseClass(ABC):
+    @abstractmethod
+    def select_features(self, data):
+        pass
+
+class RemoveHighMissingValues(FeatureSelectionBaseClass):
+    """ Remove features with high percentage of missing values. """
+    def __init__(self, threshold=0.3):
+        self.threshold = threshold
+
+    def select_features(self, data, target=None):
+        missing_percentage = data.isnull().mean()
+        selected_features = missing_percentage[missing_percentage < self.threshold].index
+        return data[selected_features]
     
-    def remove_high_missing_features(self, X):
-        missing_percentage = X.isnull().mean()
-        selected_features = missing_percentage[missing_percentage < self.missing_threshold].index
-        return X[selected_features]
-    
-    def apply_pca(self, X):
-        pca = PCA(n_components=self.n_pca_components if self.n_pca_components else X.shape[1])
-        X_pca = pca.fit_transform(X)
+class PCAFeatureSelection(FeatureSelectionBaseClass):
+    """ Select features using PCA. """
+    def __init__(self, n_components=None):
+        self.n_components = n_components
+
+    def select_features(self, data, target=None):
+        pca = PCA(n_components=self.n_components if self.n_components else data.shape[1])
+        X_pca = pca.fit_transform(data)
         return pd.DataFrame(X_pca)
     
-    def apply_variance_threshold(self, X):
-        selector = VarianceThreshold(threshold=self.variance_threshold)
-        X_reduced = selector.fit_transform(X)
-        return pd.DataFrame(X_reduced, columns=X.columns[selector.get_support()])
-    
-    def remove_highly_correlated_features(self, X):
-        corr_matrix = X.corr().abs()
-        upper_triangle = corr_matrix.where(np.triu(np.ones(corr_matrix.shape), k=1).astype(bool))
-        drop_columns = [column for column in upper_triangle.columns if any(upper_triangle[column] > self.correlation_threshold)]
-        return X.drop(columns=drop_columns)
-    
-    def select_features_by_target_correlation(self, X, y):
-        correlations = X.corrwith(y).abs()
-        selected_features = correlations[correlations > self.target_correlation_threshold].index
-        return X[selected_features]
-    
-    def forward_selection(self, X, y):
-        selected_features = []
-        remaining_features = list(X.columns)
-        best_score = -np.inf
+class VarianceThresholdFeatureSelection(FeatureSelectionBaseClass):
+    """ Select features based on variance threshold. """
+    def __init__(self, threshold=0.01):
+        self.threshold = threshold
 
-        while remaining_features:
-            scores = []
-            for feature in remaining_features:
-                model = LinearRegression()
-                model.fit(X[selected_features + [feature]], y)
-                score = model.score(X[selected_features + [feature]], y)
-                scores.append((feature, score))
-            
-            best_feature, best_feature_score = max(scores, key=lambda x: x[1])
-            if best_feature_score > best_score:
-                best_score = best_feature_score
-                selected_features.append(best_feature)
-                remaining_features.remove(best_feature)
-            else:
-                break
-        
-        return X[selected_features]
+    def select_features(self, data, target=None):
+        selector = VarianceThreshold(threshold=self.threshold)
+        X_reduced = selector.fit_transform(data)
+        return pd.DataFrame(X_reduced, columns=data.columns[selector.get_support()])
     
-    def run(self, X, y=None):
+class CorrelationThresholdFeatureSelection(FeatureSelectionBaseClass):
+    """ Select features based on correlation threshold. """
+    def __init__(self, threshold=0.9):
+        self.threshold = threshold
+
+    def select_features(self, data, target=None):
+        corr_matrix = data.corr().abs()
+        upper_triangle = corr_matrix.where(np.triu(np.ones(corr_matrix.shape), k=1).astype(bool))
+        drop_columns = [column for column in upper_triangle.columns if any(upper_triangle[column] > self.threshold)]
+        return data.drop(columns=drop_columns)
+    
+class TargetCorrelationFeatureSelection(FeatureSelectionBaseClass):
+    """ Select features based on correlation with the target variable. """
+    def __init__(self, target, threshold=0.1):
+        self.target = target
+        self.threshold = threshold
+
+    def select_features(self, data, target=None):
+        correlations = data.corrwith(self.target).abs()
+        selected_features = correlations[correlations > self.threshold].index
+        return data[selected_features]
+    
+class ForwardSelectionFeatureSelection(FeatureSelectionBaseClass):
+    """ Select features using forward selection method. """
+    def __init__(self, estimator, n_features_to_select=None):
+        self.estimator = estimator
+        self.n_features_to_select = n_features_to_select
+        self.selector = SequentialFeatureSelector(estimator, n_features_to_select=n_features_to_select)
+
+    def select_features(self, data, target):
+        self.selector.fit(data, target)
+        selected_features = data.columns[self.selector.get_support()]
+        return data[selected_features]
+    
+class FeatureSelection:
+    def __init__(self, feature_selector: FeatureSelectionBaseClass) -> None:
         """
-        Run the selected feature selection method on the dataset.
-        
-        :param X: Feature matrix.
-        :param y: Target variable (required for some methods).
-        :return: Transformed dataset with selected features.
+        Args
+            method: Feature selection method to apply. Options include:
+                - 'missing_threshold': Remove features with high percentage of missing values.
+                - 'pca': Apply PCA for dimensionality reduction.
+                - 'variance_threshold': Remove features with low variance.
+                - 'correlation_threshold': Remove features with high correlation.
+                - 'target_correlation': Select features based on correlation with target variable.
+                - 'forward_selection': Select features using forward selection method.
+            kwargs: Additional parameters for the selected method.
         """
-        if self.method == 'missing_threshold':
-            return self.remove_high_missing_features(X)
-        elif self.method == 'pca':
-            return self.apply_pca(X)
-        elif self.method == 'variance_threshold':
-            return self.apply_variance_threshold(X)
-        elif self.method == 'correlation_threshold':
-            return self.remove_highly_correlated_features(X)
-        elif self.method == 'target_correlation':
-            if y is None:
-                raise ValueError("Target variable is required for feature selection based on correlation with target.")
-            return self.select_features_by_target_correlation(X, y)
-        elif self.method == 'forward_selection':
-            if y is None:
-                raise ValueError("Target variable is required for forward selection.")
-            return self.forward_selection(X, y)
-        else:
-            raise ValueError("Invalid feature selection method provided.")
+        self.feature_selector = feature_selector
+
+    def select_features(self, data, target=None):
+        """
+        select_features method to apply the selected feature selection method.
+        Args: 
+            data: DataFrame containing the features
+            target: Series or DataFrame containing the target variable (if applicable)
+        Returns:
+            DataFrame with selected features
+        """
+        try:
+            return self.feature_selector.select_features(data, target)
+        except Exception as e:
+            print(f"Error in feature selection: {e}")
+            raise e

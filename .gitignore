@@ -15,7 +15,7 @@ venv/
 data/
 
 # Ignore other common Python-related files
-.DS_Store
+**/.DS_Store
 *.log
 *.sqlite3
 .env
@@ -24,4 +24,5 @@ data/
 catboost_info/
 
 # Ignore documents
-docs/
+doc/
+mlruns/
